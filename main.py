@@ -1,18 +1,17 @@
 import os
 import sys
 import shutil
-from src.control.musecoco.text2attribute_model import main
+from src.control.musecoco.text2attribute_model import Text2AttributePredictor, prepare_data
 from src.control.musecoco.attribute2music_model import interactive_dict_v5_1billion
-from src.control.musecoco.text2attribute_model import stage2_pre # Import the stage2 script
 
-def text2attribute():
+def init_text2attribute():
     # Step 1: Simulate terminal input by modifying sys.argv for text2attribute model
     # Define variables
     model_name_or_path = "IreneXu/MuseCoco_text2attribute"
-    test_file = "src/control/musecoco/text2attribute_model/data/predict.json"
+    test_file = "storage/input/predict.json"
     attributes_file = "src/control/musecoco/text2attribute_model/data/att_key.json"
     num_labels_file = "src/control/musecoco/text2attribute_model/num_labels.json"
-    output_dir = "src/control/musecoco/text2attribute_model//tmp"
+    output_dir = "storage/tmp"
 
     # Convert Python variables into sys.argv format
     sys.argv = [
@@ -27,26 +26,27 @@ def text2attribute():
     ]
 
     # Call the main function to process simulated inputs
-    main()
+    predictor = Text2AttributePredictor()
+    
+    return predictor
 
 def prepare_stage2():
     # Step 2: Prepare intermediate data by executing necessary scripts
     # Move to the directory for text2attribute model processing
     # Run `stage2_pre.py` - you mentioned it's a script that can be imported
-    stage2_pre()
+    prepare_data()
 
     # Move generated `infer_test.bin` to the appropriate directory
-    source_path = "src/control/musecoco/text2attribute_model/infer_test.bin"
-    destination_path = "src/control/musecoco/attribute2music_model/data/infer_input/infer_test.bin"
+    source_path = "infer_test.bin"
+    destination_path = "storage/tmp/infer_test.bin"
     os.makedirs(os.path.dirname(destination_path), exist_ok=True)
     shutil.move(source_path, destination_path)
     
-def attribute2midi():
+def init_attribute2midi():
     # Step 3: Set up variables for attribute2music model
     start, end = 0, 100  # Example values for start and end
     model_size = "1billion"
     k = 15
-    command_name = "infer_test"
     need_num = 2
     temp = 1.0
     ngram = 0
@@ -60,9 +60,9 @@ def attribute2midi():
     # Step 4: Define paths
     DATA_DIR = f"src/control/musecoco/attribute2music_model/data/{datasets_name}"
     checkpoint_path = f"src/control/musecoco/attribute2music_model/checkpoints/{model_name}/{checkpoint_name}.pt"
-    ctrl_command_path = f"src/control/musecoco/attribute2music_model/data/infer_input/{command_name}.bin"
-    save_root = f"src/control/musecoco/attribute2music_model/generation/{date}/{model_name}-{checkpoint_name}/{command_name}/topk{k}-t{temp}-ngram{ngram}"
-    log_root = f"src/control/musecoco/attribute2music_model/log/{date}/{model_name}"
+    ctrl_command_path = f"storage/tmp/infer_test.bin"
+    save_root = f"storage/generation/{date}/{model_name}-{checkpoint_name}/topk{k}-t{temp}-ngram{ngram}"
+    log_root = f"storage/log/{date}/{model_name}"
 
     # Step 5: Set environment variables
     os.environ["CUDA_VISIBLE_DEVICES"] = device
@@ -95,9 +95,13 @@ def attribute2midi():
 
     # Step 9: Call cli_main with modified arguments
     interactive_dict_v5_1billion.seed_everything(2024)  # Set random seed
-    interactive_dict_v5_1billion.cli_main()
+    
+    return interactive_dict_v5_1billion.Attribute2MusicPredictor()
 
 if __name__ == "__main__":
-    text2attribute()
+    text2attribute_predictor = init_text2attribute()
+    attribute2midi_predictor = init_attribute2midi()
+    
+    text2attribute_predictor.predict()
     prepare_stage2()
-    attribute2midi()
+    attribute2midi_predictor.predict()

@@ -472,5 +472,188 @@ def main():
         json.dump(result_output, open(os.path.join(training_args.output_dir, f"predict_attributes.json"),'w'))
         json.dump(softmaxprobs, open(os.path.join(training_args.output_dir, f"softmax_probs.json"),'w'))
 
+
+
+class Text2AttributePredictor:
+    def __init__(self):
+        parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+        self.model_args, self.data_args, self.training_args = parser.parse_args_into_dataclasses()
+
+        # Setup logging
+        logging.basicConfig(
+            format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+            datefmt="%m/%d/%Y %H:%M:%S",
+            handlers=[logging.StreamHandler(sys.stdout)],
+        )
+        log_level = self.training_args.get_process_log_level()
+        logger.setLevel(log_level)
+        datasets.utils.logging.set_verbosity(log_level)
+        transformers.utils.logging.set_verbosity(log_level)
+        transformers.utils.logging.enable_default_handler()
+        transformers.utils.logging.enable_explicit_format()
+
+        # Log on each process the small summary:
+        logger.warning(
+            f"Process rank: {self.training_args.local_rank}, device: {self.training_args.device}, n_gpu: {self.training_args.n_gpu}"
+            + f"distributed training: {bool(self.training_args.local_rank != -1)}, 16-bits training: {self.training_args.fp16}"
+        )
+        logger.info(f"Training/evaluation parameters {self.training_args}")
+
+        # Detecting last checkpoint.
+        last_checkpoint = None
+        
+        # Set seed before initializing model.
+        set_seed(self.training_args.seed)
+
+        # Get the datasets: 
+        self.data_files = {}
+
+        if self.data_args.test_file is not None:
+            test_extension = self.data_args.test_file.split(".")[-1]
+            assert (
+                test_extension == 'json'
+            ), "`test_file` should have the extension `json`"
+            self.data_files["test"] = self.data_args.test_file
+        else:
+            raise ValueError("Need a test file for `do_predict`.")
+
+        for key in self.data_files.keys():
+            logger.info(f"load a local file for {key}: {self.data_files[key]}")
+
+
+        # Attribute values / labels
+        self.attributes = json.load(open(self.data_args.attributes, 'r'))
+        num_labels = OrderedDict()
+        if self.data_args.num_labels:
+            num_labels = json.load(open(self.data_args.num_labels))
+        else:
+            raise ValueError("Need `num_label`.")
+
+        # Load pretrained model and tokenizer
+        #
+        # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
+        # download model & vocab.
+        config = BertConfig.from_pretrained(
+            self.model_args.config_name if self.model_args.config_name else self.model_args.model_name_or_path,
+            cache_dir=self.model_args.cache_dir,
+            revision=self.model_args.model_revision,
+            use_auth_token=True if self.model_args.use_auth_token else None,
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_args.tokenizer_name if self.model_args.tokenizer_name else self.model_args.model_name_or_path,
+            cache_dir=self.model_args.cache_dir,
+            use_fast=self.model_args.use_fast_tokenizer,
+            revision=self.model_args.model_revision,
+            use_auth_token=True if self.model_args.use_auth_token else None,
+        )
+        model = BertForAttributModel.from_pretrained(
+            self.model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in self.model_args.model_name_or_path),
+            config=config,
+            num_labels = num_labels,
+            tokenizer = self.tokenizer,
+            cache_dir=self.model_args.cache_dir,
+            revision=self.model_args.model_revision,
+            use_auth_token=True if self.model_args.use_auth_token else None,
+            ignore_mismatched_sizes=self.model_args.ignore_mismatched_sizes,
+        )
+
+        model.tokenizer = self.tokenizer
+        
+        # Preprocessing the raw_datasets
+        # Padding strategy
+        if self.data_args.pad_to_max_length:
+            self.padding = "max_length"
+        else:
+            # We will pad later, dynamically at batch creation, to the max sequence length in each batch
+            self.padding = False
+
+        if self.data_args.max_seq_length > self.tokenizer.model_max_length:
+            logger.warning(
+                f"The max_seq_length passed ({self.data_args.max_seq_length}) is larger than the maximum length for the"
+                f"model ({self.tokenizer.model_max_length}). Using max_seq_length={self.tokenizer.model_max_length}."
+            )
+        self.max_seq_length = min(self.data_args.max_seq_length, self.tokenizer.model_max_length)
+
+
+        # Data collator will default to DataCollatorWithPadding when the tokenizer is passed to Trainer, so we change it if
+        # we already did the padding.
+        if self.data_args.pad_to_max_length:
+            data_collator = default_data_collator
+        elif self.training_args.fp16:
+            data_collator = DataCollatorWithPadding(self.tokenizer, pad_to_multiple_of=8)
+        else:
+            data_collator = None
+                                    
+        # Initialize our Trainer
+        self.trainer = Trainer(
+            model=model,
+            args=self.training_args,
+            train_dataset=None,
+            eval_dataset=None,
+            compute_metrics=None,
+            tokenizer=self.tokenizer,
+            data_collator=data_collator,
+            # callbacks=[EarlyStoppingCallback(5, 0.01)]
+        )
+    
+    
+    def preprocess_function(self, examples, attributes):
+        # Tokenize the texts
+        result = self.tokenizer(examples['text'], 
+                        padding=self.padding, 
+                        max_length=self.max_seq_length, 
+                        truncation=True)
+        if 'labels' in examples:
+            for idx in range(len(examples['labels'])):
+                att_value = OrderedDict()
+                for order, att in enumerate(attributes):
+                    att_value[att] = examples['labels'][idx][order].index(1)
+                examples['labels'][idx] = deepcopy(att_value)
+            result['labels']= examples['labels']
+        return result
+        
+    
+    def predict(self):        
+        # Loading a dataset from local json files
+        raw_datasets = load_dataset(
+            "json",
+            data_files=self.data_files,
+            cache_dir=self.model_args.cache_dir,
+            use_auth_token=True if self.model_args.use_auth_token else None,
+        )
+
+        with self.training_args.main_process_first(desc="dataset map pre-processing"):
+            raw_datasets = raw_datasets.map(
+                partial(self.preprocess_function, attributes=self.attributes),
+                batched=True,
+                load_from_cache_file=not self.data_args.overwrite_cache,
+                desc="Running tokenizer on dataset",
+            )
+
+
+        if "test" not in raw_datasets:
+            raise ValueError("--do_predict requires a test dataset")
+        predict_dataset = raw_datasets["test"]
+        if self.data_args.max_predict_samples is not None:
+            max_predict_samples = min(len(predict_dataset), self.data_args.max_predict_samples)
+            predict_dataset = predict_dataset.select(range(max_predict_samples))
+
+        logger.info("*** Predict ***")
+        predictions = self.trainer.predict(predict_dataset, metric_key_prefix="predict").predictions
+        result_output = {}
+        softmaxprobs = {}
+        for k,v in predictions.items():
+            pred = np.argmax(predictions[k], axis=1)
+            softmax = torch.nn.Softmax(dim=1)
+            softmaxprobs[k] = softmax(torch.from_numpy(predictions[k])).tolist()
+            result_output[k] = np.zeros(predictions[k].shape, dtype=np.int8)
+            for p in range(len(pred)):
+                result_output[k][p, pred[p]] = 1
+            result_output[k] = result_output[k].tolist()
+        json.dump(result_output, open(os.path.join(self.training_args.output_dir, f"predict_attributes.json"),'w'))
+        json.dump(softmaxprobs, open(os.path.join(self.training_args.output_dir, f"softmax_probs.json"),'w'))
+
+
 if __name__ == "__main__":
     main()

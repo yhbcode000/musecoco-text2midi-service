@@ -372,7 +372,7 @@ class LanguageModelingTaskWithControl(LanguageModelingTask):
                 compute_alignment=getattr(args, "print_alignment", False),
             )
 
-        from command_seq_generator import CommandSequenceGenerator
+        from .command_seq_generator import CommandSequenceGenerator
 
         # Choose search strategy. Defaults to Beam Search.
         sampling = getattr(args, "sampling", False)

@@ -165,3 +165,4 @@ cython_debug/
 *.pt
 tmp
 generation
+log/*
