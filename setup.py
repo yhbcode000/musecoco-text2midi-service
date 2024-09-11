@@ -7,12 +7,12 @@ with open('requirements.txt') as f:
 setup(
     name='musecoco_text2midi_service',  # Name of your project
     version='0.1.0',  # Initial version of your project
-    author='Your Name or Team',  # Replace with your name or your team's name
-    author_email='your-email@example.com',  # Replace with your email
+    author='yhbcode000',  # Replace with your name or your team's name
+    author_email='hobart.yang@qq.com',  # Replace with your email
     description='A deployable service module for generating MIDI files from textual descriptions using MuseCoco.',
     long_description=open('README.md').read(),  # Use README.md for the long description
     long_description_content_type='text/markdown',  # Specify the content type of the long description
-    url='https://github.com/your-repo/musecoco-text2midi-service',  # Replace with the URL to your project
+    url='https://github.com/yhbcode000/musecoco-text2midi-service',  # Replace with the URL to your project
     packages=find_packages(where="src"),  # Automatically find all packages in your project
     package_dir={'': 'src'},  # Tell setuptools where the packages are located
     include_package_data=True,  # Include additional files specified in MANIFEST.in
@@ -39,7 +39,7 @@ setup(
     python_requires='>=3.8',  # Minimum version requirement of Python
     entry_points={
         'console_scripts': [
-            'start-midi-service=musecoco_text2midi_service.main:main',  # Entry point for your service
+            'start-musecoco-text2midi-service=musecoco_text2midi_service.main:main',  # Entry point for your service
         ],
     },
 )
