@@ -1,1 +1,31 @@
-# pass
+text2attribute:
+  model_name_or_path: "IreneXu/MuseCoco_text2attribute"
+  test_file: "storage/input/predict.json"
+  attributes_file: "storage/config/att_key.json"
+  num_labels_file: "storage/config/num_labels.json"
+  output_dir: "storage/tmp"
+  overwrite_output_dir: true
+
+attribute2music:
+  start: 0
+  end: 100
+  model_size: "1billion"
+  k: 15
+  need_num: 2
+  temp: 1.0
+  ngram: 0
+  datasets_name: "truncated_2560"
+  checkpoint_name: "checkpoint_2_280000"
+  batch_size: 2
+  device: "1"
+  date: "0505"
+
+paths:
+  DATA_DIR: "storage/data/{datasets_name}"
+  checkpoint_path: "storage/checkpoints/linear_mask-{model_size}/{checkpoint_name}.pt"
+  ctrl_command_path: "storage/tmp/infer_test.bin"
+  save_root: "storage/generation/{date}/linear_mask-{model_size}-{checkpoint_name}/topk{k}-t{temp}-ngram{ngram}"
+  log_root: "storage/log/{date}/linear_mask-{model_size}"
+
+environment:
+  CUDA_VISIBLE_DEVICES: "{device}"

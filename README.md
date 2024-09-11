@@ -9,9 +9,8 @@ The **MuseCoco Text-to-MIDI Service** is a refactored version of the [MuseCoco](
   - [✨ Features](#-features)
   - [📂 Directory Structure](#-directory-structure)
   - [⚙️ Installation](#️-installation)
-  - [🚀 Usage](#-usage)
-  - [🔗 Integration](#-integration)
   - [🔧 Configuration](#-configuration)
+  - [🚀 Usage](#-usage)
   - [🧪 Running Tests](#-running-tests)
   - [🤝 Contributing](#-contributing)
   - [📄 License](#-license)
@@ -30,25 +29,47 @@ The repository is organized as follows:
 ```plaintext
 musecoco-text2midi-service/
 ├── src/
-│   ├── control/               # Controllers for orchestrating service logic
-│   ├── dao/                   # Data Access Objects for database or storage interactions
-│   ├── model/                 # Models representing the structure and workflow of MIDI generation
-│   ├── utils/                 # Utility functions for common tasks
-│   └── view/                  # Views for API or CLI outputs
-│       └── __init__.py        # Initializer for the src package
+│   └── musecoco_text2midi_service/
+│       ├── control/                   # Controllers for orchestrating service logic
+│       │   ├── __init__.py
+│       │   ├── _musecoco/
+│       │   │   ├── __init__.py
+│       │   │   └── view.py
+│       │   └── _text2midi.py
+│       ├── dao/                       # Data Access Objects for configuration management
+│       │   ├── __init__.py
+│       │   └── _config_manager.py
+│       ├── model/                     # Models representing the structure and workflow of MIDI generation
+│       │   ├── __init__.py
+│       │   └── _config_model.py
+│       ├── utils/                     # Utility functions for common tasks
+│       │   ├── __init__.py
+│       │   └── _watch_dog.py
+│       └── view/                      # Views for API or CLI outputs
+│           ├── __init__.py
+│           └── _app_view.py
 ├── storage/
-│   ├── config/                # Configuration files
-│   │   └── main_config.yaml   # Main configuration file
-│   └── log/                   # Log files
-│       └── .gitkeep           # Keeps log directory in version control
+│   ├── checkpoints/                   # Model checkpoints
+│   │   └── linear_mask-1billion/
+│   │       ├── checkpoint_2_280000.pt
+│   │       └── README.md              # Instructions for managing checkpoints
+│   ├── config/                        # Configuration files
+│   │   ├── main_config.yaml           # Main configuration file
+│   │   ├── att_key.json
+│   │   └── num_labels.json
+│   ├── input/                         # Input files for predictions
+│   │   ├── predict_backup.json        # Example input format for predictions
+│   │   └── predict.json
+│   ├── log/                           # Log files
+│   └── tmp/                           # Temporary files and outputs
 ├── tests/
-│   ├── __init__.py            # Initializer for the tests package
-│   └── ...                    # Test modules for various components
-├── .gitignore                 # Specifies files and directories to ignore in version control
-├── LICENSE                    # License file
-├── main.py                    # Entry point for running the service
-├── README.md                  # Project description and instructions
-└── setup.py                   # Setup script for packaging and distribution
+│   ├── __init__.py                    # Initializer for the tests package
+│   └── ...                            # Test modules for various components
+├── .gitignore                         # Specifies files and directories to ignore in version control
+├── LICENSE                            # License file
+├── main.py                            # Entry point for running the service
+├── README.md                          # Project description and instructions
+└── setup.py                           # Setup script for packaging and distribution
 ```
 
 ## ⚙️ Installation
@@ -64,11 +85,22 @@ To install the **MuseCoco Text-to-MIDI Service**, follow these steps:
 
 2. **Install Dependencies**:
 
-   Use `pip` to install the required dependencies:
+   Create a new environment and install the dependencies. Currently, PyTorch needs to be installed with `conda`:
 
    ```bash
+   conda create -n MuseCoco python=3.8
+   conda activate MuseCoco
+   conda install pytorch=1.11.0 -c pytorch
    pip install -e .
    ```
+
+   > **Note**: Other dependencies can be installed with `pip install -e .` or `pip install musecoco_text2midi_service`. PyTorch installation with `pip` will be supported later.
+
+## 🔧 Configuration
+
+The service uses YAML configuration files located in `storage/config/`. The main configuration file is [`main_config.yaml`](storage/config/main_config.yaml), which is used by the `main.py` script. You can modify these files to configure parameters such as model checkpoints, logging settings, and API keys.
+
+Checkpoints should follow the instructions provided in [`storage/checkpoints/linear_mask-1billion/README.md`](storage/checkpoints/linear_mask-1billion/README.md) and be saved in the same directory as the README.md file.
 
 ## 🚀 Usage
 
@@ -78,56 +110,27 @@ To start the service, run:
 python main.py
 ```
 
-This will launch the MuseCoco Text-to-MIDI Service, allowing you to convert textual descriptions into MIDI files through the defined APIs or CLI.
+The `main.py` file provides a terminal-based app demo. 
 
-## 🔗 Integration
+> Refer to `storage/input/predict_backup.json` for examples of acceptable input formats for the service. This file contains sample data that illustrates how to structure text input for the MIDI generation process.
 
-To integrate the **MuseCoco Text-to-MIDI Service** into your existing project:
+You can also import the package to your project.
 
-1. **Install the Module**:
-
-   Install the service as a package:
-
-   ```bash
-   pip install -e /path/to/musecoco-text2midi-service
-   ```
-
-2. **Import and Use Functions in Your Code**:
-
-   Import the necessary functions or classes from the `control` or `view` modules:
-
-   ```python
-   from musecoco_text2midi_service.src.control import midi_generation_function
-
-   # Example usage for generating MIDI from text
-   midi_file = midi_generation_function("Generate a classical piano piece in C major")
-   print(midi_file)
-   ```
-
-   Replace `midi_generation_function` with the specific function you wish to use.
-
-## 🔧 Configuration
-
-The service uses a YAML configuration file located at `storage/config/main_config.yaml`. You can modify this file to configure parameters such as model checkpoints, logging settings, and API keys.
-
-Example configuration in `main_config.yaml`:
-
-```yaml
-midi_generation:
-  model_checkpoint: "path/to/checkpoint"
-logging:
-  level: "INFO"
+```python
+import musecoco_text2midi_service
 ```
+
+> Later this will launch the MuseCoco Text-to-MIDI Service, allowing you to convert textual descriptions into MIDI files through the defined APIs or CLI. 
 
 ## 🧪 Running Tests
 
 To run the test suite, use:
 
 ```bash
-pytest tests/
+pytest /tests
 ```
 
-This command will execute all test cases in the `tests` directory and provide a report of the test results.
+This command will execute all test cases in the `tests` directory and provide a report of the test results. Ensure that the project is built correctly before running the tests.
 
 ## 🤝 Contributing
 

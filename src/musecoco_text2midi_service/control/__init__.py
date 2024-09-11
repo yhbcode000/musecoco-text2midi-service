@@ -1,0 +1,1 @@
+from ._text2midi import Text2Midi

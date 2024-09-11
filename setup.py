@@ -13,7 +13,8 @@ setup(
     long_description=open('README.md').read(),  # Use README.md for the long description
     long_description_content_type='text/markdown',  # Specify the content type of the long description
     url='https://github.com/your-repo/musecoco-text2midi-service',  # Replace with the URL to your project
-    packages=find_packages(),  # Automatically find all packages in your project
+    packages=find_packages(where="src"),  # Automatically find all packages in your project
+    package_dir={'': 'src'},  # Tell setuptools where the packages are located
     include_package_data=True,  # Include additional files specified in MANIFEST.in
     install_requires=required,
     extras_require={
@@ -32,11 +33,10 @@ setup(
         'Intended Audience :: Developers',
         'Topic :: Software Development :: Libraries :: Application Frameworks',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.10',
         'License :: OSI Approved :: Apache2.0 License',
         'Operating System :: Linux',
     ],
-    python_requires='==3.8',  # Minimum version requirement of Python
+    python_requires='>=3.8',  # Minimum version requirement of Python
     entry_points={
         'console_scripts': [
             'start-midi-service=musecoco_text2midi_service.main:main',  # Entry point for your service
