@@ -1,0 +1,189 @@
+openapi: 3.0.0
+info:
+  title: Text to MIDI Service
+  description: An API to convert text input to a MIDI file asynchronously.
+  version: 1.1.0
+servers:
+  - url: https://api.example.com/v1
+    description: Main production server
+
+paths:
+  /submit-text:
+    post:
+      summary: Submit text input for MIDI conversion
+      description: Receives text input and starts the MIDI generation process asynchronously.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  description: The input text to be converted to a MIDI file.
+              required:
+                - text
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                    description: A unique identifier for the MIDI generation job.
+                  status:
+                    type: string
+                    enum: [submitted]
+                    description: The status of the job submission.
+              example:
+                jobId: "12345"
+                status: "submitted"
+
+  /check-status/{jobId}:
+    get:
+      summary: Check MIDI generation job status
+      description: Returns the status of the MIDI generation job.
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: string
+          description: The unique identifier for the MIDI generation job.
+      responses:
+        '200':
+          description: Job status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                    description: The unique identifier for the MIDI generation job.
+                  status:
+                    type: string
+                    enum: [submitted, processing, completed, failed]
+                    description: The current status of the job.
+              example:
+                jobId: "12345"
+                status: "completed"
+
+  /get-result/{jobId}:
+    get:
+      summary: Retrieve MIDI file metadata
+      description: Returns the metadata of the generated MIDI file, including the file path.
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: string
+          description: The unique identifier for the MIDI generation job.
+      responses:
+        '200':
+          description: MIDI file metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                    description: The unique identifier for the MIDI generation job.
+                  status:
+                    type: string
+                    enum: [completed]
+                    description: The status of the job indicating it is complete.
+                  midiFilePath:
+                    type: string
+                    description: The path to the generated MIDI file.
+                  metaData:
+                    type: object
+                    properties:
+                      duration:
+                        type: number
+                        description: Duration of the generated MIDI file in seconds.
+                      creationTime:
+                        type: string
+                        format: date-time
+                        description: The time the MIDI file was created.
+              example:
+                jobId: "12345"
+                status: "completed"
+                midiFilePath: "/files/midi/12345.mid"
+                metaData:
+                  duration: 120.5
+                  creationTime: "2024-09-12T12:34:56Z"
+        '400':
+          description: MIDI generation is not complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message indicating the generation is still in progress.
+              example:
+                error: "MIDI generation is not complete yet."
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message indicating the job was not found.
+              example:
+                error: "Job ID not found."
+
+  /download-midi/{jobId}:
+    get:
+      summary: Download the generated MIDI file
+      description: Returns the generated MIDI file as an attachment.
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: string
+          description: The unique identifier for the MIDI generation job.
+      responses:
+        '200':
+          description: MIDI file downloaded successfully
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: MIDI generation is not complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message indicating the generation is still in progress.
+              example:
+                error: "MIDI generation is not complete yet."
+        '404':
+          description: MIDI file or job not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message indicating the job or file was not found.
+              example:
+                error: "MIDI file not found."

@@ -6,6 +6,12 @@ def prepare_data():
     pred = json.load(open('storage/tmp/predict_attributes.json','r'))
     probs = json.load(open('storage/tmp/softmax_probs.json','r'))
     att_key = json.load(open('storage/config/att_key.json','r'))
+    
+    # # TODO need to update to the config
+    # test = json.load(open('modules/musecoco-text2midi-service/storage/input/predict.json','r'))
+    # pred = json.load(open('modules/musecoco-text2midi-service/storage/tmp/predict_attributes.json','r'))
+    # probs = json.load(open('modules/musecoco-text2midi-service/storage/tmp/softmax_probs.json','r'))
+    # att_key = json.load(open('modules/musecoco-text2midi-service/storage/config/att_key.json','r'))
 
     final = []
     for line in test:

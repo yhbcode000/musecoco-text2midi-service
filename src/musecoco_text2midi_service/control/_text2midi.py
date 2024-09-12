@@ -95,6 +95,12 @@ class Text2Midi:
         self.input_json_path = "storage/input/predict.json"
         self.output_bin_path = "storage/tmp/infer_test.bin"
         self.output_midi_dir = "storage/generation/0505/linear_mask-1billion-checkpoint_2_280000/topk15-t1.0-ngram0/0/midi"
+        
+        # # Set input and output paths # TODO need to add this to the config.
+        # self.input_json_path = "modules/musecoco-text2midi-service/storage/input/predict.json"
+        # self.output_bin_path = "modules/musecoco-text2midi-service/storage/tmp/infer_test.bin"
+        # self.output_midi_dir = "modules/musecoco-text2midi-service/storage/generation/0505/linear_mask-1billion-checkpoint_2_280000/topk15-t1.0-ngram0/0/midi"
+
 
 
     def __process_input_change(self):
