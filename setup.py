@@ -39,7 +39,7 @@ setup(
     python_requires='>=3.8',  # Minimum version requirement of Python
     entry_points={
         'console_scripts': [
-            'start-musecoco-text2midi-service=musecoco_text2midi_service.main:start',  # Entry point for your service
+            'start-musecoco-text2midi-service=musecoco_text2midi_service.main:main',  # Entry point for your service
         ],
     },
 )

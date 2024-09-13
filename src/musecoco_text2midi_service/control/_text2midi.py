@@ -18,6 +18,8 @@ class Text2Midi:
         attribute2music_config = self.config.attribute2music
         paths_config = self.config.paths
         env_config = self.config.environment
+        
+        argv_backup = sys.argv
 
         # Step 1: Simulate terminal input by modifying sys.argv for text2attribute model
         sys.argv = [
@@ -50,7 +52,6 @@ class Text2Midi:
         datasets_name = attribute2music_config.datasets_name
         checkpoint_name = attribute2music_config.checkpoint_name
         BATCH_SIZE = attribute2music_config.batch_size
-        device = attribute2music_config.device
         date = attribute2music_config.date
 
         # Step 4: Define paths
@@ -61,7 +62,7 @@ class Text2Midi:
         log_root = paths_config.log_root.format(date=date, model_size=model_size)
 
         # Step 5: Set environment variables
-        os.environ["CUDA_VISIBLE_DEVICES"] = env_config.CUDA_VISIBLE_DEVICES.format(device=device)
+        os.environ["CUDA_VISIBLE_DEVICES"] = env_config.CUDA_VISIBLE_DEVICES
 
         # Step 6: Create necessary directories
         os.makedirs(save_root, exist_ok=True)
@@ -90,6 +91,8 @@ class Text2Midi:
         ]
 
         self.attribute2midi_predictor = init_attribute2midi()
+        
+        sys.argv = argv_backup
         
         # Set input and output paths
         self.input_json_path = "storage/input/predict.json"
@@ -121,7 +124,7 @@ class Text2Midi:
 
         # Read the MIDI data and return it with metadata
         midi_files = os.listdir(self.output_midi_dir)
-        latest_midi_file = max(midi_files, key=lambda x: os.path.getctime(os.path.join(self.output_midi_dir, x)))
+        latest_midi_file = min(midi_files, key=lambda x: os.path.getctime(os.path.join(self.output_midi_dir, x)))
         midi_path = os.path.join(self.output_midi_dir, latest_midi_file)
 
         metadata = {

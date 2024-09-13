@@ -2,7 +2,7 @@ import os
 import sys
 import shutil
 from .text2attribute_model import Text2AttributePredictor, prepare_data
-from .attribute2music_model import interactive_dict_v5_1billion
+from .attribute2music_model.linear_mask import interactive_dict_v5_1billion
 
 def init_text2attribute():
     # Call the main function to process simulated inputs

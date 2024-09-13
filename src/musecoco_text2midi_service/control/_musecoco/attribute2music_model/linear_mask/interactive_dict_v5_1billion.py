@@ -23,11 +23,11 @@ from fairseq import checkpoint_utils, distributed_utils, options, tasks, utils
 from fairseq.data import encoders
 from fairseq.token_generation_constraints import pack_constraints, unpack_constraints
 from fairseq_cli.generate import get_symbols_to_strip_from_output
-from midiprocessor import MidiDecoder, MidiEncoder
-from midi_data_extractor.attribute_unit import convert_value_dict_into_unit_dict
+from ..midiprocessor import MidiDecoder, MidiEncoder
+from ..midi_data_extractor.attribute_unit import convert_value_dict_into_unit_dict
 import shutil, random
 from fairseq_cli import interactive
-from data_process.util import key_order, key_has_NA
+from ..data_process.util import key_order, key_has_NA
 from .linear import transformer_lm
 
 logging.basicConfig(
@@ -430,9 +430,7 @@ class Attribute2MusicPredictor:
         args = options.parse_args_and_arch(parser)
         
         self.args = args
-        
-        args = self.args
-        
+                
         start_time = time.time()
         self.total_translate_time = 0
 

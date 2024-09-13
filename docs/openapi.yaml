@@ -76,7 +76,7 @@ paths:
   /get-result/{jobId}:
     get:
       summary: Retrieve MIDI file metadata
-      description: Returns the metadata of the generated MIDI file, including the file path.
+      description: Returns the metadata of the generated MIDI file.
       parameters:
         - in: path
           name: jobId
@@ -99,9 +99,6 @@ paths:
                     type: string
                     enum: [completed]
                     description: The status of the job indicating it is complete.
-                  midiFilePath:
-                    type: string
-                    description: The path to the generated MIDI file.
                   metaData:
                     type: object
                     properties:
@@ -112,13 +109,13 @@ paths:
                         type: string
                         format: date-time
                         description: The time the MIDI file was created.
-              example:
-                jobId: "12345"
-                status: "completed"
-                midiFilePath: "/files/midi/12345.mid"
-                metaData:
-                  duration: 120.5
-                  creationTime: "2024-09-12T12:34:56Z"
+                      # Add any other metadata fields as needed
+                example:
+                  jobId: "12345"
+                  status: "completed"
+                  metaData:
+                    duration: 120.5
+                    creationTime: "2024-09-12T12:34:56Z"
         '400':
           description: MIDI generation is not complete
           content:

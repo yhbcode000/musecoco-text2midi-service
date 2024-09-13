@@ -17,7 +17,6 @@ attribute2music:
   datasets_name: "truncated_2560"
   checkpoint_name: "checkpoint_2_280000"
   batch_size: 2
-  device: "1"
   date: "0505"
 
 paths:
@@ -28,4 +27,4 @@ paths:
   log_root: "storage/log/{date}/linear_mask-{model_size}"
 
 environment:
-  CUDA_VISIBLE_DEVICES: "{device}"
+  CUDA_VISIBLE_DEVICES: "1"

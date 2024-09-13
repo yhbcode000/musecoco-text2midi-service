@@ -22,7 +22,6 @@ class Attribute2MusicConfig:
     datasets_name: str
     checkpoint_name: str
     batch_size: int
-    device: str
     date: str
 
 @dataclass

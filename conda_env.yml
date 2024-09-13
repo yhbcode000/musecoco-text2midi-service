@@ -1,0 +1,23 @@
+name: MuseCoco
+dependencies:
+  - python=3.8
+  - absl-py
+  - accelerate
+  - msgpack-python
+  - datasets
+  - evaluate
+  - matplotlib
+  - music21
+  - numpy
+  - protobuf
+  - pytorch
+  - scikit-learn
+  - scipy
+  - seaborn
+  - sentencepiece
+  - tensorboardx
+  - tqdm
+  - transformers
+  - wandb
+  - watchdog
+  - flask

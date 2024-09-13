@@ -14,6 +14,9 @@ The **MuseCoco Text-to-MIDI Service** is a refactored version of the [MuseCoco](
   - [🧪 Running Tests](#-running-tests)
   - [🤝 Contributing](#-contributing)
   - [📄 License](#-license)
+  - [Reference:](#reference)
+  - [Recommendation](#recommendation)
+  - [Notice](#notice)
 
 ## ✨ Features
 
@@ -88,10 +91,17 @@ To install the **MuseCoco Text-to-MIDI Service**, follow these steps:
    Create a new environment and install the dependencies. Currently, PyTorch needs to be installed with `conda`:
 
    ```bash
-   conda create -n MuseCoco python=3.8
+   conda env create -f conda_env.yml
    conda activate MuseCoco
-   conda install pytorch=1.11.0 -c pytorch
+   conda -c nvidia/label/cuda-12.3
+   pip install torch==2.3
+   pip install --user --no-cache-dir pytorch-fast-transformers
    pip install -e .
+
+   <!-- cd modules
+   git clone https://github.com/pytorch/fairseq
+   cd fairseq
+   pip install -e . -->
    ```
 
    > **Note**: Other dependencies can be installed with `pip install -e .` or `pip install musecoco_text2midi_service`. PyTorch installation with `pip` will be supported later.
@@ -153,6 +163,20 @@ We welcome contributions from the community. Please follow these steps to contri
 ## 📄 License
 
 This project is licensed under Apache License 2.0 - see the LICENSE file for more details.
+
+## Reference:
+
+- https://askubuntu.com/questions/1288672/how-do-you-install-cuda-11-on-ubuntu-20-10-and-verify-the-installation
+- https://docs.nvidia.com/cuda/archive/12.1.0/cuda-installation-guide-linux/#conda-overview
+- https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=22.04&target_type=deb_network
+
+## Recommendation 
+
+- https://hydra.cc/docs/1.3/intro/
+
+## Notice
+
+- The only othing that kinda difficult it installing the pytorch-fast-transformers
 
 ---
 
