@@ -16,7 +16,7 @@ attribute2music:
   ngram: 0
   datasets_name: "truncated_2560"
   checkpoint_name: "checkpoint_2_280000"
-  batch_size: 2
+  batch_size: 1
   date: "0505"
 
 paths:
