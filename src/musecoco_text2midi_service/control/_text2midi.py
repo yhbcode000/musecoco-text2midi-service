@@ -53,6 +53,9 @@ class Text2Midi:
         checkpoint_name = attribute2music_config.checkpoint_name
         BATCH_SIZE = attribute2music_config.batch_size
         date = attribute2music_config.date
+        max_len = attribute2music_config.max_len
+        min_len = attribute2music_config.min_len
+        max_positions = attribute2music_config.max_positions
 
         # Store configuration for dynamic save_root generation
         self.model_size = model_size
@@ -88,8 +91,8 @@ class Text2Midi:
             "--need_num", str(need_num),
             "--start", str(start),
             "--end", str(end),
-            "--max-len-b", "2560",
-            "--min-len", "512",
+            "--max-len-b", str(max_len),
+            "--min-len", str(min_len),
             "--sampling",
             "--beam", "1",
             "--sampling-topk", str(k),
@@ -97,7 +100,7 @@ class Text2Midi:
             "--no-repeat-ngram-size", str(ngram),
             "--buffer-size", str(BATCH_SIZE),
             "--batch-size", str(BATCH_SIZE),
-            "--max-target-positions", "1000"
+            "--max-target-positions", str(max_positions)
         ]
 
         self.attribute2midi_predictor = init_attribute2midi()

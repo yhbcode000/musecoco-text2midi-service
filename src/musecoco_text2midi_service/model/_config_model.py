@@ -23,6 +23,9 @@ class Attribute2MusicConfig:
     checkpoint_name: str
     batch_size: int
     date: str
+    max_len: int  # Maximum generation length in tokens
+    min_len: int  # Minimum generation length in tokens
+    max_positions: int  # Maximum context/attention window size
 
 @dataclass
 class PathsConfig:
