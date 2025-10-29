@@ -54,6 +54,15 @@ class Text2Midi:
         BATCH_SIZE = attribute2music_config.batch_size
         date = attribute2music_config.date
 
+        # Store configuration for dynamic save_root generation
+        self.model_size = model_size
+        self.checkpoint_name = checkpoint_name
+        self.k = k
+        self.temp = temp
+        self.ngram = ngram
+        self.paths_config = paths_config
+        self.base_date = date
+
         # Step 4: Define paths
         DATA_DIR = paths_config.DATA_DIR.format(datasets_name=datasets_name)
         checkpoint_path = paths_config.checkpoint_path.format(model_size=model_size, checkpoint_name=checkpoint_name)
@@ -87,24 +96,18 @@ class Text2Midi:
             "--temperature", str(temp),
             "--no-repeat-ngram-size", str(ngram),
             "--buffer-size", str(BATCH_SIZE),
-            "--batch-size", str(BATCH_SIZE)
+            "--batch-size", str(BATCH_SIZE),
+            "--max-target-positions", "1000"
         ]
 
         self.attribute2midi_predictor = init_attribute2midi()
         
         sys.argv = argv_backup
+        self.save_root = save_root
         
         # Set input and output paths
         self.input_json_path = "storage/input/predict.json"
         self.output_bin_path = "storage/tmp/infer_test.bin"
-        self.output_midi_dir = "storage/generation/0505/linear_mask-1billion-checkpoint_2_280000/topk15-t1.0-ngram0/0/midi"
-        
-        # # Set input and output paths # TODO need to add this to the config.
-        # self.input_json_path = "modules/musecoco-text2midi-service/storage/input/predict.json"
-        # self.output_bin_path = "modules/musecoco-text2midi-service/storage/tmp/infer_test.bin"
-        # self.output_midi_dir = "modules/musecoco-text2midi-service/storage/generation/0505/linear_mask-1billion-checkpoint_2_280000/topk15-t1.0-ngram0/0/midi"
-
-
 
     def __process_input_change(self):
         """Callback for when input JSON file changes."""
@@ -116,6 +119,22 @@ class Text2Midi:
 
     def text_to_midi(self, input_text, return_midi=False):
         """Function to take string input and return MIDI data with metadata."""
+        # Generate unique save_root with timestamp to preserve previous generations
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_date = f"{self.base_date}_{timestamp}"
+        unique_save_root = self.paths_config.save_root.format(
+            date=unique_date,
+            model_size=self.model_size,
+            checkpoint_name=self.checkpoint_name,
+            k=self.k,
+            temp=self.temp,
+            ngram=self.ngram
+        )
+
+        # Update predictor's save_root to the new unique path
+        self.attribute2midi_predictor.save_root = unique_save_root
+        os.makedirs(unique_save_root, exist_ok=True)
+
         # Save input text to the target directory
         with open(self.input_json_path, "w") as file:
             json.dump([{"text": input_text}], file)
@@ -123,15 +142,26 @@ class Text2Midi:
         self.__process_input_change()
 
         # Read the MIDI data and return it with metadata
-        midi_files = os.listdir(self.output_midi_dir)
-        latest_midi_file = min(midi_files, key=lambda x: os.path.getctime(os.path.join(self.output_midi_dir, x)))
-        midi_path = os.path.join(self.output_midi_dir, latest_midi_file)
+        midi_files = []
+        if os.path.isdir(unique_save_root):
+            for subdir in os.listdir(unique_save_root):
+                midi_dir = os.path.join(unique_save_root, subdir, "midi")
+                if not os.path.isdir(midi_dir):
+                    continue
+                for entry in os.listdir(midi_dir):
+                    if entry.lower().endswith(".mid"):
+                        midi_files.append(os.path.join(midi_dir, entry))
+
+        if not midi_files:
+            raise FileNotFoundError("No MIDI files generated in save_root directory.")
+
+        midi_path = max(midi_files, key=os.path.getctime)
 
         metadata = {
             "time_generated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "file_path": midi_path
         }
-        
+
         if return_midi:
             with open(midi_path, "rb") as midi_file:
                 midi_data = midi_file.read()

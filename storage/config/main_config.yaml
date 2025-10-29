@@ -8,10 +8,10 @@ text2attribute:
 
 attribute2music:
   start: 0
-  end: 100
+  end: 1
   model_size: "1billion"
-  k: 15
-  need_num: 2
+  k: 1
+  need_num: 1
   temp: 1.0
   ngram: 0
   datasets_name: "truncated_2560"
@@ -27,4 +27,4 @@ paths:
   log_root: "storage/log/{date}/linear_mask-{model_size}"
 
 environment:
-  CUDA_VISIBLE_DEVICES: "1"
+  CUDA_VISIBLE_DEVICES: "0"

@@ -28,8 +28,13 @@ from transformers import (
     TrainingArguments,
     set_seed,
     EarlyStoppingCallback,
-    is_torch_tpu_available
 )
+# is_torch_tpu_available was removed in newer versions of transformers
+try:
+    from transformers import is_torch_tpu_available
+except ImportError:
+    def is_torch_tpu_available():
+        return False
 from .model import BertForAttributModel
 from .data_collator import default_data_collator
 from transformers.trainer_utils import get_last_checkpoint
@@ -256,7 +261,6 @@ def main():
         "json",
         data_files=data_files,
         cache_dir=model_args.cache_dir,
-        use_auth_token=True if model_args.use_auth_token else None,
     )
 
 
@@ -282,14 +286,12 @@ def main():
         model_args.config_name if model_args.config_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
     )
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
         use_fast=model_args.use_fast_tokenizer,
         revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
     )
     model = BertForAttributModel.from_pretrained(
         model_args.model_name_or_path,
@@ -299,7 +301,6 @@ def main():
         tokenizer = tokenizer,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
         ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
     )
     
@@ -537,14 +538,12 @@ class Text2AttributePredictor:
             self.model_args.config_name if self.model_args.config_name else self.model_args.model_name_or_path,
             cache_dir=self.model_args.cache_dir,
             revision=self.model_args.model_revision,
-            use_auth_token=True if self.model_args.use_auth_token else None,
         )
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_args.tokenizer_name if self.model_args.tokenizer_name else self.model_args.model_name_or_path,
             cache_dir=self.model_args.cache_dir,
             use_fast=self.model_args.use_fast_tokenizer,
             revision=self.model_args.model_revision,
-            use_auth_token=True if self.model_args.use_auth_token else None,
         )
         model = BertForAttributModel.from_pretrained(
             self.model_args.model_name_or_path,
@@ -554,7 +553,6 @@ class Text2AttributePredictor:
             tokenizer = self.tokenizer,
             cache_dir=self.model_args.cache_dir,
             revision=self.model_args.model_revision,
-            use_auth_token=True if self.model_args.use_auth_token else None,
             ignore_mismatched_sizes=self.model_args.ignore_mismatched_sizes,
         )
 
@@ -620,7 +618,6 @@ class Text2AttributePredictor:
             "json",
             data_files=self.data_files,
             cache_dir=self.model_args.cache_dir,
-            use_auth_token=True if self.model_args.use_auth_token else None,
         )
 
         with self.training_args.main_process_first(desc="dataset map pre-processing"):

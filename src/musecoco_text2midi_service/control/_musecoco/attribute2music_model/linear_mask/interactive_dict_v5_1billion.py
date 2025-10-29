@@ -243,6 +243,10 @@ def attributes(args):
         task.max_positions(), *[model.max_positions() for model in models]
     )
 
+    # Override with command-line argument if provided
+    if hasattr(args, 'max_target_positions') and args.max_target_positions is not None:
+        max_positions = min(max_positions, args.max_target_positions)
+
     if args.constraints:
         logger.warning(
             "NOTE: Constrained decoding currently assumes a shared subword vocabulary."
@@ -297,11 +301,11 @@ def attributes(args):
             test_command[i]["infer_command_tokens"] = attribute_tokens
             gen_command_list.append([test_command[i]["infer_command_tokens"], f"{i}", j, test_command[i]])
 
-    steps = len(gen_command_list) // args.batch_size
-    print(f"Starts to generate {args.start} to {args.end} of {len(gen_command_list)} samples in {steps + 1} batch steps!")
+    total_batches = math.ceil(len(gen_command_list) / args.batch_size) if len(gen_command_list) else 0
+    print(f"Starts to generate {args.start} to {args.end} of {len(gen_command_list)} samples in {total_batches} batch steps!")
 
 
-    for batch_step in range(steps + 1):
+    for batch_step in range(total_batches):
         infer_list = gen_command_list[batch_step*args.batch_size:(batch_step+1)*args.batch_size]
         infer_command_token = [g[0] for g in infer_list]
         # assert infer_command.shape[1] == 133, f"error feature dim for {gen_key}!"
@@ -512,6 +516,10 @@ class Attribute2MusicPredictor:
             task.max_positions(), *[model.max_positions() for model in models]
         )
 
+        # Override with command-line argument if provided
+        if hasattr(args, 'max_target_positions') and args.max_target_positions is not None:
+            max_positions = min(max_positions, args.max_target_positions)
+
         if args.constraints:
             logger.warning(
                 "NOTE: Constrained decoding currently assumes a shared subword vocabulary."
@@ -575,11 +583,11 @@ class Attribute2MusicPredictor:
                 test_command[i]["infer_command_tokens"] = attribute_tokens
                 gen_command_list.append([test_command[i]["infer_command_tokens"], f"{i}", j, test_command[i]])
 
-        steps = len(gen_command_list) // args.batch_size
-        print(f"Starts to generate {args.start} to {args.end} of {len(gen_command_list)} samples in {steps + 1} batch steps!")
+        total_batches = math.ceil(len(gen_command_list) / args.batch_size) if len(gen_command_list) else 0
+        print(f"Starts to generate {args.start} to {args.end} of {len(gen_command_list)} samples in {total_batches} batch steps!")
 
 
-        for batch_step in range(steps + 1):
+        for batch_step in range(total_batches):
             infer_list = gen_command_list[batch_step*args.batch_size:(batch_step+1)*args.batch_size]
             infer_command_token = [g[0] for g in infer_list]
             # assert infer_command.shape[1] == 133, f"error feature dim for {gen_key}!"
@@ -680,4 +688,3 @@ class Attribute2MusicPredictor:
 if __name__ == "__main__":
     seed_everything(2024) # 2023
     cli_main()
-

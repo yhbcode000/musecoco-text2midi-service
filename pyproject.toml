@@ -1,0 +1,76 @@
+[project]
+name = "musecoco-text2midi-service"
+version = "0.1.0"
+description = "A deployable service module for generating MIDI files from textual descriptions using MuseCoco."
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    { name = "yhbcode000", email = "hobart.yang@qq.com" }
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+]
+dependencies = [
+    # PyTorch (required for both components)
+    "torch",
+    # FastAPI server dependencies
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6",
+    # Text-to-Attribute Understanding
+    "transformers==4.26.0",
+    "accelerate",
+    "datasets",
+    "sentencepiece!=0.1.92",
+    "protobuf",
+    "tqdm",
+    "scikit-learn",
+    "wandb",
+    # Attribute-to-Music Generation
+    "fairseq==0.10.2",
+    "miditoolkit",
+    "matplotlib",
+    "scipy",
+    "evaluate",
+    "numpy==1.23.4",
+    "music21",
+    "msgpack",
+    "seaborn",
+    "tensorboardX",
+    "absl-py",
+    "setuptools>=75.3.2",
+    "watchdog>=4.0.2",
+    "email-validator>=2.3.0",
+    "jupyter>=1.1.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "flake8>=4.0.0",
+    "black>=22.3.0",
+]
+test = [
+    "pytest>=7.0.0",
+    "coverage>=6.0",
+]
+
+[project.scripts]
+start-musecoco-text2midi-service = "musecoco_text2midi_service.main:main"
+
+[project.urls]
+Homepage = "https://github.com/yhbcode000/musecoco-text2midi-service"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
