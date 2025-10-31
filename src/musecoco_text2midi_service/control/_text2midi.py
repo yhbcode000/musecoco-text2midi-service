@@ -278,3 +278,175 @@ class Text2Midi:
             midi_data = None
 
         return midi_data, metadata
+
+    def generate_with_context(self, original_text, new_text, original_save_root, return_midi=False):
+        """
+        Generate MIDI with combined text context - FRESH generation (no prefix).
+
+        This method:
+        1. Concatenates original_text + new_text
+        2. Runs Text2Attribute on combined text → generates NEW attributes
+        3. Generates FRESH music from combined text (no REMI prefix)
+
+        Note: The model cannot perform modification with prefix, so this is a fresh generation.
+
+        Args:
+            original_text: Original text description from previous job
+            new_text: New text to append/combine
+            original_save_root: Path to the save_root directory (not used, kept for API compatibility)
+            return_midi: Whether to return MIDI binary data
+
+        Returns:
+            Tuple of (midi_data, metadata) where midi_data is binary if return_midi=True, else None
+        """
+        # Combine texts
+        combined_text = original_text + " " + new_text
+        print(f"[Modification] Combined text: '{combined_text}'")
+        print(f"[Modification] Generating FRESH music from combined text (no prefix)")
+
+        # Simply call text_to_midi with the combined text for fresh generation
+        midi_data, base_metadata = self.text_to_midi(combined_text, return_midi=return_midi)
+
+        # Enhance metadata with modification-specific info
+        enhanced_metadata = {
+            **base_metadata,
+            "original_text": original_text,
+            "new_text": new_text,
+            "combined_text": combined_text,
+            "context_generation": True,
+            "modification_type": "fresh_generation"
+        }
+
+        return midi_data, enhanced_metadata
+
+    def context_continue_generation(self, original_text, new_text, original_save_root, return_midi=False):
+        """
+        Generate extended MIDI with combined text context - same as continue but with NEW attributes.
+
+        This method:
+        1. Concatenates original_text + new_text
+        2. Runs Text2Attribute on combined text → generates NEW attributes
+        3. Loads previous REMI tokens as FULL prefix
+        4. Generates with NEW attributes + FULL prefix + DOUBLED max_len
+
+        This is identical to continue_midi_generation, except it uses NEW attributes from
+        the combined text instead of the original attributes.
+
+        Args:
+            original_text: Original text description from previous job
+            new_text: New text to append/combine
+            original_save_root: Path to the save_root directory of the original generation
+            return_midi: Whether to return MIDI binary data
+
+        Returns:
+            Tuple of (midi_data, metadata) where midi_data is binary if return_midi=True, else None
+        """
+        # Combine texts
+        combined_text = original_text + " " + new_text
+        print(f"[Context-Continue] Combined text: '{combined_text}'")
+
+        # Generate unique save_root for this generation with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_date = f"{self.base_date}_ctxcont_{timestamp}"
+        unique_save_root = self.paths_config.save_root.format(
+            date=unique_date,
+            model_size=self.model_size,
+            checkpoint_name=self.checkpoint_name,
+            k=self.k,
+            temp=self.temp,
+            ngram=self.ngram
+        )
+        os.makedirs(unique_save_root, exist_ok=True)
+
+        # Run Text2Attribute on combined text to get NEW attributes
+        with open(self.input_json_path, "w") as file:
+            json.dump([{"text": combined_text}], file)
+
+        self.text2attribute_predictor.predict()
+        from ._musecoco.view import prepare_stage2
+        prepare_stage2(self.source_path, self.destination_path)
+
+        # Load the newly generated attributes
+        attribute_dict = None
+        with open(self.output_bin_path, "rb") as f:
+            import pickle
+            test_command = pickle.load(f)
+            if len(test_command) > 0:
+                attribute_dict = test_command[0]
+
+        if not attribute_dict:
+            raise ValueError("Failed to generate attributes from combined text")
+
+        print(f"[Context-Continue] Generated new attributes from combined text")
+
+        # Load previous REMI tokens from original save_root (FULL prefix, not short)
+        remi_file_path = None
+        if os.path.isdir(original_save_root):
+            for subdir in os.listdir(original_save_root):
+                subdir_path = os.path.join(original_save_root, subdir)
+                if not os.path.isdir(subdir_path):
+                    continue
+
+                remi_dir = os.path.join(subdir_path, "remi")
+                if os.path.isdir(remi_dir):
+                    for remi_file in os.listdir(remi_dir):
+                        if remi_file.endswith(".txt"):
+                            remi_file_path = os.path.join(remi_dir, remi_file)
+                            break
+                if remi_file_path:
+                    break
+
+        if not remi_file_path:
+            raise FileNotFoundError(f"No REMI token file found in {original_save_root}")
+
+        # Load REMI tokens
+        with open(remi_file_path, "r") as f:
+            remi_str = f.read().strip()
+
+        # Extract just the REMI tokens (after <sep> token)
+        tokens = remi_str.split(" ")
+        try:
+            sep_index = tokens.index("<sep>")
+            remi_tokens = tokens[sep_index + 1:]
+        except ValueError:
+            remi_tokens = tokens
+
+        original_token_count = len(remi_tokens)
+        print(f"[Context-Continue] Loaded {original_token_count} REMI tokens from previous generation")
+        print(f"[Context-Continue] Using FULL prefix (all {original_token_count} tokens)")
+
+        # DOUBLED max_len (like continue-generate)
+        doubled_max_len = original_token_count * 2
+        print(f"[Context-Continue] Using doubled max_len: {doubled_max_len} (2x {original_token_count})")
+
+        # Update predictor's save_root
+        self.attribute2midi_predictor.save_root = unique_save_root
+
+        # Call predict_with_prefix with NEW attributes + FULL REMI prefix + DOUBLED max_len
+        # This is identical to continue_generate except we use NEW attributes
+        midi_path = self.attribute2midi_predictor.predict_with_prefix(
+            attribute_dict=attribute_dict,
+            remi_prefix_tokens=remi_tokens,  # FULL prefix
+            custom_max_len=doubled_max_len
+        )
+
+        metadata = {
+            "time_generated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "file_path": midi_path,
+            "save_root": unique_save_root,
+            "original_text": original_text,
+            "new_text": new_text,
+            "combined_text": combined_text,
+            "prefix_token_count": original_token_count,
+            "doubled_max_len": doubled_max_len,
+            "context_continue_generation": True,
+            "note": "Uses FULL prefix with NEW attributes from combined text"
+        }
+
+        if return_midi:
+            with open(midi_path, "rb") as midi_file:
+                midi_data = midi_file.read()
+        else:
+            midi_data = None
+
+        return midi_data, metadata

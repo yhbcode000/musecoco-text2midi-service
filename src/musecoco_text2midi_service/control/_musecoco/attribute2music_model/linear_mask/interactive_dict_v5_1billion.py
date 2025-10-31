@@ -696,6 +696,14 @@ class Attribute2MusicPredictor:
         Returns:
             Path to the generated MIDI file
         """
+        # Validate inputs
+        if remi_prefix_tokens is None:
+            raise ValueError("remi_prefix_tokens cannot be None")
+        if not isinstance(remi_prefix_tokens, list):
+            raise ValueError(f"remi_prefix_tokens must be a list, got {type(remi_prefix_tokens)}")
+        if len(remi_prefix_tokens) == 0:
+            raise ValueError("remi_prefix_tokens cannot be empty")
+
         args = self.args
 
         # Temporarily update max_len for this generation
@@ -808,25 +816,57 @@ class Attribute2MusicPredictor:
                     f.write(hypo_str)
 
                 # Extract REMI tokens - ensure we have FULL sequence (prefix + continuation)
-                full_tokens = hypo_str.split(" ")
+                full_tokens = hypo_str.split(" ") if hypo_str else []
+
+                # Safety check
+                if not full_tokens:
+                    print(f"[ERROR] hypo_str is empty or None!")
+                    continue
+
+                print(f"[Debug] Full tokens length: {len(full_tokens)}")
+                print(f"[Debug] sep_pos: {sep_pos}")
+                print(f"[Debug] First 20 full_tokens: {full_tokens[:20]}")
+                print(f"[Debug] Tokens around sep_pos ({sep_pos}): {full_tokens[max(0, sep_pos-5):sep_pos+5]}")
 
                 # Find where <sep> is in the output
                 try:
                     actual_sep_index = full_tokens.index("<sep>")
                     generated_tokens = full_tokens[actual_sep_index + 1:]
                 except ValueError:
-                    generated_tokens = full_tokens[sep_pos:] if sep_pos < len(full_tokens) else []
+                    # <sep> not found, use sep_pos fallback
+                    if sep_pos < len(full_tokens):
+                        generated_tokens = full_tokens[sep_pos:]
+                    else:
+                        generated_tokens = []
+
+                # Ensure generated_tokens is a list and not None
+                if generated_tokens is None:
+                    generated_tokens = []
+
+                print(f"[Debug] Generated tokens length: {len(generated_tokens)}, "
+                      f"Prefix tokens length: {len(remi_prefix_tokens)}")
 
                 # Ensure we have the complete sequence (prefix + continuation)
                 # The model might only generate new tokens without repeating the prefix
                 if len(generated_tokens) < len(remi_prefix_tokens):
                     # Prefix is missing from output - manually add it
+                    # Ensure both are lists before concatenation
+                    if not isinstance(remi_prefix_tokens, list):
+                        raise TypeError(f"remi_prefix_tokens is not a list: {type(remi_prefix_tokens)}")
+                    if not isinstance(generated_tokens, list):
+                        raise TypeError(f"generated_tokens is not a list: {type(generated_tokens)}")
+
                     remi_token = remi_prefix_tokens + generated_tokens
                     print(f"[Continuation] Manually added prefix ({len(remi_prefix_tokens)} tokens) "
                           f"+ generated continuation ({len(generated_tokens)} tokens)")
                 elif len(generated_tokens) < len(remi_prefix_tokens) * 1.5:
                     # Output seems too short, likely only contains continuation
                     # Use prefix + generated for safety
+                    if not isinstance(remi_prefix_tokens, list):
+                        raise TypeError(f"remi_prefix_tokens is not a list: {type(remi_prefix_tokens)}")
+                    if not isinstance(generated_tokens, list):
+                        raise TypeError(f"generated_tokens is not a list: {type(generated_tokens)}")
+
                     remi_token = remi_prefix_tokens + generated_tokens
                     print(f"[Continuation] Output short - using prefix ({len(remi_prefix_tokens)} tokens) "
                           f"+ generated ({len(generated_tokens)} tokens)")
@@ -840,11 +880,26 @@ class Attribute2MusicPredictor:
                       f"Average translation time: {info['time']} seconds; "
                       f"Batch size: {args.batch_size}")
 
+                # Validate remi_token is a list of strings
+                if not isinstance(remi_token, list):
+                    raise TypeError(f"remi_token must be a list, got {type(remi_token)}")
+
+                print(f"[Debug] Sample remi_token (first 10): {remi_token[:10]}")
+                print(f"[Debug] Sample remi_token (last 10): {remi_token[-10:]}")
+
                 # Decode and save MIDI
                 os.makedirs(self.save_root + "/0/midi", exist_ok=True)
-                midi_obj = self.midi_decoder.decode_from_token_str_list(remi_token)
-                midi_file_path = self.save_root + "/0/midi/continued.mid"
-                midi_obj.dump(midi_file_path)
+                try:
+                    midi_obj = self.midi_decoder.decode_from_token_str_list(remi_token)
+                    midi_file_path = self.save_root + "/0/midi/continued.mid"
+                    midi_obj.dump(midi_file_path)
+                    print(f"[Success] MIDI file saved to: {midi_file_path}")
+                except Exception as e:
+                    print(f"[ERROR] MIDI decoding failed: {str(e)}")
+                    print(f"[ERROR] Token count: {len(remi_token)}")
+                    import traceback
+                    traceback.print_exc()
+                    raise
 
                 break  # Only process first hypothesis
 

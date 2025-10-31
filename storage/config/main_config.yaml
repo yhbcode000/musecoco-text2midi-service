@@ -21,7 +21,7 @@ attribute2music:
   # Generation length controls (adjust these for faster/slower generation)
   max_len: 512      # Maximum tokens to generate (shorter = faster, was 2560) max_len >= min_len
   min_len: 128       # Minimum tokens to generate (was 512) controls actual music length
-  max_positions: 512  # Maximum context window (memory limit) max_positions >= max_len
+  max_positions: 51200  # Maximum context window (memory limit) max_positions >= max_len
 
 paths:
   DATA_DIR: "storage/data/{datasets_name}"

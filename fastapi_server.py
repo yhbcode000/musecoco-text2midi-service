@@ -204,7 +204,8 @@ def generate_midi(job_id: str, input_text: str) -> None:
         job_store[job_id]['result'] = {
             'metaData': meta_data,
             'midiFilePath': midi_file_path,
-            'saveRoot': save_root
+            'saveRoot': save_root,
+            'originalText': input_text  # Store original text for context generation
         }
     except Exception as e:
         job_store[job_id]['status'] = JobStatusEnum.FAILED
@@ -238,6 +239,87 @@ def continue_generate_midi(new_job_id: str, original_save_root: str) -> None:
             'metaData': meta_data,
             'midiFilePath': midi_file_path,
             'saveRoot': save_root
+        }
+    except Exception as e:
+        job_store[new_job_id]['status'] = JobStatusEnum.FAILED
+        job_store[new_job_id]['error'] = str(e)
+
+
+def generate_with_context_midi(new_job_id: str, original_text: str, new_text: str, original_save_root: str) -> None:
+    """
+    Background task to generate MIDI with combined text context.
+
+    Args:
+        new_job_id: Unique job identifier for the new generation
+        original_text: Original text from the previous job
+        new_text: New text to append/combine
+        original_save_root: Path to the save_root of the original generation
+    """
+    try:
+        job_store[new_job_id]['status'] = JobStatusEnum.PROCESSING
+
+        midi_data, meta_data = text2midi.generate_with_context(
+            original_text=original_text,
+            new_text=new_text,
+            original_save_root=original_save_root,
+            return_midi=True
+        )
+        midi_file_path = meta_data.get('file_path')
+        save_root = meta_data.get('save_root')
+
+        # Remove 'file_path' from meta_data before storing it (but keep save_root)
+        if 'file_path' in meta_data:
+            del meta_data['file_path']
+
+        job_store[new_job_id]['status'] = JobStatusEnum.COMPLETED
+        job_store[new_job_id]['result'] = {
+            'metaData': meta_data,
+            'midiFilePath': midi_file_path,
+            'saveRoot': save_root,
+            'originalText': meta_data.get('combined_text', '')  # Store combined text for future context
+        }
+    except Exception as e:
+        job_store[new_job_id]['status'] = JobStatusEnum.FAILED
+        job_store[new_job_id]['error'] = str(e)
+
+
+def context_continue_generate_midi(new_job_id: str, original_text: str, new_text: str, original_save_root: str) -> None:
+    """
+    Background task to generate extended MIDI with combined text context.
+
+    Combines both context generation and length doubling:
+    - Generates NEW attributes from combined text
+    - Uses previous REMI tokens as prefix
+    - Doubles the generation length
+
+    Args:
+        new_job_id: Unique job identifier for the new generation
+        original_text: Original text from the previous job
+        new_text: New text to append/combine
+        original_save_root: Path to the save_root of the original generation
+    """
+    try:
+        job_store[new_job_id]['status'] = JobStatusEnum.PROCESSING
+
+        midi_data, meta_data = text2midi.context_continue_generation(
+            original_text=original_text,
+            new_text=new_text,
+            original_save_root=original_save_root,
+            return_midi=True
+        )
+        midi_file_path = meta_data.get('file_path')
+        save_root = meta_data.get('save_root')
+
+        # Remove 'file_path' from meta_data before storing it (but keep save_root)
+        if 'file_path' in meta_data:
+            del meta_data['file_path']
+
+        job_store[new_job_id]['status'] = JobStatusEnum.COMPLETED
+        job_store[new_job_id]['result'] = {
+            'metaData': meta_data,
+            'midiFilePath': midi_file_path,
+            'saveRoot': save_root,
+            'originalText': meta_data.get('combined_text', '')  # Store combined text for future context
         }
     except Exception as e:
         job_store[new_job_id]['status'] = JobStatusEnum.FAILED
@@ -661,6 +743,271 @@ async def continue_generate(job_id: str):
         status=JobStatusEnum.SUBMITTED,
         message="Continuation job submitted successfully. Use the job_id to check status."
     )
+
+
+@app.post(
+    "/generate-with-context/{job_id}",
+    response_model=JobSubmitResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Generate MIDI with Combined Text (Modification)",
+    description="""
+    Generate FRESH MIDI from combined text context - modification endpoint.
+
+    This endpoint:
+    1. Takes the original text description from a previous job
+    2. Appends your new text to it
+    3. Generates NEW attributes from the combined text via Text2Attribute
+    4. Generates FRESH music from the combined text (no prefix)
+
+    **Important**: This is a FRESH generation based on combined text, not a continuation.
+    The model cannot perform modification with prefix, so this creates entirely new music
+    reflecting the combined description.
+
+    **Use Case**: Create a new piece of music that incorporates both the original concept
+    and new elements. For example, "A peaceful piano melody" + "with energetic jazz harmonies"
+    creates fresh music that is both peaceful piano AND jazzy.
+
+    **Key Differences**:
+    - **Continue-Generate**: Same attributes, double length, uses prefix (pure continuation)
+    - **Generate-With-Context**: NEW attributes, normal length, NO prefix (fresh modification)
+
+    The request body should contain the new text to append.
+    """,
+    responses={
+        202: {
+            "description": "Context generation job submitted successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "jobId": "789e0123-e45b-67d8-c901-234567890abc",
+                        "status": "submitted",
+                        "message": "Context generation job submitted successfully. Use the job_id to check status."
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Original job ID not found",
+            "model": ErrorResponse
+        },
+        400: {
+            "description": "Original job not completed or missing original text",
+            "model": ErrorResponse
+        }
+    },
+    tags=["MIDI Generation"]
+)
+async def generate_with_context(job_id: str, text_input: TextInput):
+    """
+    Generate MIDI with combined text context from a previous job.
+
+    Args:
+        job_id: Job ID of the completed generation to use as context
+        text_input: New text to append to the original text
+
+    Returns:
+        JobSubmitResponse with new job_id for the context generation
+
+    Raises:
+        HTTPException: If original job_id is not found, not completed, or missing original text
+    """
+    # Check if original job exists
+    original_job = job_store.get(job_id)
+    if not original_job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job ID '{job_id}' not found"
+        )
+
+    # Check if original job is completed
+    if original_job['status'] == JobStatusEnum.FAILED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot use failed job for context. Error: {original_job.get('error', 'Unknown error')}"
+        )
+
+    if original_job['status'] != JobStatusEnum.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Original job is not completed yet. Current status: {original_job['status']}"
+        )
+
+    # Get original text and save_root from original job
+    original_text = original_job['result'].get('originalText')
+    original_save_root = original_job['result'].get('saveRoot')
+
+    if not original_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Original job does not have original text information. Cannot generate with context."
+        )
+
+    if not original_save_root:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Original job does not have save_root information. Cannot generate with context."
+        )
+
+    # Validate new text input
+    if not text_input.text or not text_input.text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New text input is required and cannot be empty"
+        )
+
+    # Generate new job ID for context generation
+    new_job_id = str(uuid.uuid4())
+    job_store[new_job_id] = {
+        'status': JobStatusEnum.SUBMITTED,
+        'original_job_id': job_id
+    }
+
+    # Start background thread to process context generation
+    threading.Thread(
+        target=generate_with_context_midi,
+        args=(new_job_id, original_text, text_input.text, original_save_root),
+        daemon=True
+    ).start()
+
+    return JobSubmitResponse(
+        jobId=new_job_id,
+        status=JobStatusEnum.SUBMITTED,
+        message="Context generation job submitted successfully. Use the job_id to check status."
+    )
+
+
+# @app.post(
+#     "/context-continue-generate/{job_id}",
+#     response_model=JobSubmitResponse,
+#     status_code=status.HTTP_202_ACCEPTED,
+#     summary="Continue with New Attributes (Condition-Expansion)",
+#     description="""
+#     Continue generation with NEW attributes from combined text - expansion with new conditions.
+
+#     This endpoint is identical to Continue-Generate, except it uses NEW attributes:
+#     1. Takes the original text description from a previous job
+#     2. Appends your new text to create combined description
+#     3. Generates NEW attributes from the combined text via Text2Attribute
+#     4. Uses the previous REMI tokens as FULL prefix
+#     5. Generates with NEW attributes + FULL prefix + DOUBLED length (2x original)
+
+#     **Key Point**: The ONLY difference from Continue-Generate is the attributes.
+#     - Continue-Generate uses the SAME original attributes
+#     - Context-Continue-Generate uses NEW attributes from the combined text
+
+#     **Use Case**: Extend a previous generation while steering it with new attributes.
+#     For example, "A peaceful piano melody" (448 tokens) + "with powerful orchestral crescendo"
+#     creates an ~896-token piece that starts with the original melody but is guided by
+#     attributes reflecting both peaceful piano AND powerful orchestral elements.
+
+#     **Comparison**:
+#     - **Continue-Generate**: SAME attributes, 2x length, FULL prefix (pure continuation)
+#     - **Generate-With-Context**: NEW attributes, normal length, NO prefix (fresh modification)
+#     - **Context-Continue-Generate**: NEW attributes, 2x length, FULL prefix (continue with new direction) ✨
+
+#     The request body should contain the new text to append.
+#     """,
+#     responses={
+#         202: {
+#             "description": "Context-continue generation job submitted successfully",
+#             "content": {
+#                 "application/json": {
+#                     "example": {
+#                         "jobId": "abc1234-e567-89f0-g123-456789abcdef",
+#                         "status": "submitted",
+#                         "message": "Context-continue generation job submitted successfully. Use the job_id to check status."
+#                     }
+#                 }
+#             }
+#         },
+#         404: {
+#             "description": "Original job ID not found",
+#             "model": ErrorResponse
+#         },
+#         400: {
+#             "description": "Original job not completed or missing original text",
+#             "model": ErrorResponse
+#         }
+#     },
+#     tags=["MIDI Generation"]
+# )
+# async def context_continue_generate(job_id: str, text_input: TextInput):
+#     """
+#     Generate extended MIDI with combined text context and doubled length.
+
+#     Args:
+#         job_id: Job ID of the completed generation to use as context
+#         text_input: New text to append to the original text
+
+#     Returns:
+#         JobSubmitResponse with new job_id for the context-continue generation
+
+#     Raises:
+#         HTTPException: If original job_id is not found, not completed, or missing original text
+#     """
+#     # Check if original job exists
+#     original_job = job_store.get(job_id)
+#     if not original_job:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail=f"Job ID '{job_id}' not found"
+#         )
+
+#     # Check if original job is completed
+#     if original_job['status'] == JobStatusEnum.FAILED:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=f"Cannot use failed job for context. Error: {original_job.get('error', 'Unknown error')}"
+#         )
+
+#     if original_job['status'] != JobStatusEnum.COMPLETED:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=f"Original job is not completed yet. Current status: {original_job['status']}"
+#         )
+
+#     # Get original text and save_root from original job
+#     original_text = original_job['result'].get('originalText')
+#     original_save_root = original_job['result'].get('saveRoot')
+
+#     if not original_text:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Original job does not have original text information. Cannot generate with context."
+#         )
+
+#     if not original_save_root:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Original job does not have save_root information. Cannot generate with context."
+#         )
+
+#     # Validate new text input
+#     if not text_input.text or not text_input.text.strip():
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="New text input is required and cannot be empty"
+#         )
+
+#     # Generate new job ID for context-continue generation
+#     new_job_id = str(uuid.uuid4())
+#     job_store[new_job_id] = {
+#         'status': JobStatusEnum.SUBMITTED,
+#         'original_job_id': job_id
+#     }
+
+#     # Start background thread to process context-continue generation
+#     threading.Thread(
+#         target=context_continue_generate_midi,
+#         args=(new_job_id, original_text, text_input.text, original_save_root),
+#         daemon=True
+#     ).start()
+
+#     return JobSubmitResponse(
+#         jobId=new_job_id,
+#         status=JobStatusEnum.SUBMITTED,
+#         message="Context-continue generation job submitted successfully. Use the job_id to check status."
+#     )
 
 
 # ============================================================================
