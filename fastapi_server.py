@@ -194,19 +194,54 @@ def generate_midi(job_id: str, input_text: str) -> None:
 
         midi_data, meta_data = text2midi.text_to_midi(input_text, return_midi=True)
         midi_file_path = meta_data.get('file_path')
+        save_root = meta_data.get('save_root')
 
-        # Remove 'file_path' from meta_data before storing it
+        # Remove 'file_path' from meta_data before storing it (but keep save_root for continuation)
         if 'file_path' in meta_data:
             del meta_data['file_path']
 
         job_store[job_id]['status'] = JobStatusEnum.COMPLETED
         job_store[job_id]['result'] = {
             'metaData': meta_data,
-            'midiFilePath': midi_file_path
+            'midiFilePath': midi_file_path,
+            'saveRoot': save_root
         }
     except Exception as e:
         job_store[job_id]['status'] = JobStatusEnum.FAILED
         job_store[job_id]['error'] = str(e)
+
+
+def continue_generate_midi(new_job_id: str, original_save_root: str) -> None:
+    """
+    Background task to continue MIDI generation from a previous job.
+
+    Args:
+        new_job_id: Unique job identifier for the continuation
+        original_save_root: Path to the save_root of the original generation
+    """
+    try:
+        job_store[new_job_id]['status'] = JobStatusEnum.PROCESSING
+
+        midi_data, meta_data = text2midi.continue_midi_generation(
+            original_save_root=original_save_root,
+            return_midi=True
+        )
+        midi_file_path = meta_data.get('file_path')
+        save_root = meta_data.get('save_root')
+
+        # Remove 'file_path' from meta_data before storing it (but keep save_root for continuation)
+        if 'file_path' in meta_data:
+            del meta_data['file_path']
+
+        job_store[new_job_id]['status'] = JobStatusEnum.COMPLETED
+        job_store[new_job_id]['result'] = {
+            'metaData': meta_data,
+            'midiFilePath': midi_file_path,
+            'saveRoot': save_root
+        }
+    except Exception as e:
+        job_store[new_job_id]['status'] = JobStatusEnum.FAILED
+        job_store[new_job_id]['error'] = str(e)
 
 
 # ============================================================================
@@ -515,6 +550,116 @@ async def download_midi(job_id: str):
         path=midi_file_path,
         media_type="audio/midi",
         filename=f"generated_{job_id}.mid"
+    )
+
+
+@app.post(
+    "/continue-generate/{job_id}",
+    response_model=JobSubmitResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Continue MIDI Generation",
+    description="""
+    Continue MIDI generation from a previously completed job.
+
+    This endpoint takes a completed job and continues generation using the REMI tokens
+    from the original job as a prefix. The generation length is doubled (2x the original
+    REMI token count).
+
+    The continued MIDI will be saved as a new file (continuation only, not merged with original).
+
+    **Workflow:**
+    1. Provide the job_id of a completed generation job
+    2. System loads REMI tokens and attributes from the original job
+    3. Calculates new max_len as 2x the original token count
+    4. Generates continuation using MuseCoco
+    5. Returns a new job_id to track the continuation
+
+    Use the new job_id with `/check-status`, `/get-result`, and `/download-midi` endpoints.
+    """,
+    responses={
+        202: {
+            "description": "Continuation job submitted successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "jobId": "456e7890-e12b-34d5-b678-901234567890",
+                        "status": "submitted",
+                        "message": "Continuation job submitted successfully. Use the job_id to check status."
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Original job ID not found",
+            "model": ErrorResponse
+        },
+        400: {
+            "description": "Original job not completed or failed",
+            "model": ErrorResponse
+        }
+    },
+    tags=["MIDI Generation"]
+)
+async def continue_generate(job_id: str):
+    """
+    Continue MIDI generation from a previous job.
+
+    Args:
+        job_id: Job ID of the completed generation to continue from
+
+    Returns:
+        JobSubmitResponse with new job_id for the continuation
+
+    Raises:
+        HTTPException: If original job_id is not found or not completed
+    """
+    # Check if original job exists
+    original_job = job_store.get(job_id)
+    if not original_job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job ID '{job_id}' not found"
+        )
+
+    # Check if original job is completed
+    if original_job['status'] == JobStatusEnum.FAILED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot continue from failed job. Error: {original_job.get('error', 'Unknown error')}"
+        )
+
+    if original_job['status'] != JobStatusEnum.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Original job is not completed yet. Current status: {original_job['status']}"
+        )
+
+    # Get save_root from original job
+    original_save_root = original_job['result'].get('saveRoot')
+    if not original_save_root:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Original job does not have save_root information. Cannot continue generation."
+        )
+
+    # Generate new job ID for continuation
+    new_job_id = str(uuid.uuid4())
+    job_store[new_job_id] = {
+        'status': JobStatusEnum.SUBMITTED,
+        'original_job_id': job_id
+    }
+
+    # Start background thread to process continuation
+    threading.Thread(
+        target=continue_generate_midi,
+        args=(new_job_id, original_save_root),
+        daemon=True
+    ).start()
+
+    return JobSubmitResponse(
+        jobId=new_job_id,
+        status=JobStatusEnum.SUBMITTED,
+        message="Continuation job submitted successfully. Use the job_id to check status."
     )
 
 

@@ -684,6 +684,178 @@ class Attribute2MusicPredictor:
                         midi_obj = self.midi_decoder.decode_from_token_str_list(remi_token)
                         midi_obj.dump(self.save_root + f"/{infer_list[id_][1]}/midi/{save_id}.mid")
 
+    def predict_with_prefix(self, attribute_dict, remi_prefix_tokens, custom_max_len):
+        """
+        Generate MIDI continuation using REMI tokens as prefix.
+
+        Args:
+            attribute_dict: Dictionary containing attribute tokens (from infer_command.json)
+            remi_prefix_tokens: List of REMI tokens to use as prefix for generation
+            custom_max_len: Custom max_len for this generation (typically 2x original length)
+
+        Returns:
+            Path to the generated MIDI file
+        """
+        args = self.args
+
+        # Temporarily update max_len for this generation
+        original_max_len = args.max_len_b
+        original_max_positions = self.max_positions
+        original_max_target_positions = getattr(args, 'max_target_positions', None)
+
+        args.max_len_b = custom_max_len
+
+        # Get attribute tokens
+        if "pred_labels" in attribute_dict:
+            pred_labels = attribute_dict["pred_labels"]
+        elif "gold_labels" in attribute_dict:
+            pred_labels = attribute_dict["gold_labels"]
+        else:
+            raise ValueError("No pred_labels or gold_labels found in attribute_dict")
+
+        attribute_tokens = convert_vector_to_token(pred_labels)
+
+        # Create start tokens with REMI prefix
+        # Format: attribute_tokens <sep> remi_prefix_tokens
+        remi_prefix_str = " ".join(remi_prefix_tokens)
+        start_token = " ".join(attribute_tokens) + " <sep> " + remi_prefix_str
+
+        # IMPORTANT: sep_pos determines where generation starts
+        # Set it to AFTER the prefix so model continues (not regenerates)
+        sep_pos = len(attribute_tokens) + 1 + len(remi_prefix_tokens)
+
+        # Calculate required max_positions to accommodate prefix + new generation
+        # prefix_length = attributes + sep + remi_prefix_tokens
+        prefix_length = sep_pos
+        required_positions = prefix_length + custom_max_len
+
+        # Update max_positions to handle the larger context
+        args.max_target_positions = required_positions
+        self.max_positions = required_positions
+
+        print(f"Updated max_positions from {original_max_positions} to {required_positions} "
+              f"(prefix: {prefix_length}, new generation: {custom_max_len})")
+
+        # Generate continuation
+        results = []
+        for batch in make_batches([start_token], args, self.task, self.max_positions, self.encode_fn):
+            bsz = batch.src_tokens.size(0)
+            src_tokens = batch.src_tokens
+            src_lengths = batch.src_lengths
+            constraints = batch.constraints
+
+            if self.use_cuda:
+                src_tokens = src_tokens.cuda()
+                src_lengths = src_lengths.cuda()
+                if constraints is not None:
+                    constraints = constraints.cuda()
+
+            sample = {
+                "net_input": {
+                    "src_tokens": src_tokens,
+                    "src_lengths": src_lengths,
+                    "sep_pos": np.array([sep_pos]),
+                },
+            }
+            translate_start_time = time.time()
+            translations = self.task.inference_step(
+                self.generator, self.models, sample, constraints=constraints
+            )
+            translate_time = time.time() - translate_start_time
+            self.total_translate_time += translate_time
+            list_constraints = [[] for _ in range(bsz)]
+            if args.constraints:
+                list_constraints = [unpack_constraints(c) for c in constraints]
+
+            for i, (id, hypos) in enumerate(zip(batch.ids.tolist(), translations)):
+                src_tokens_i = utils.strip_pad(src_tokens[i], self.tgt_dict.pad())
+                constraints = list_constraints[i]
+                results.append(
+                    (
+                        self.start_id + id,
+                        src_tokens_i,
+                        hypos,
+                        {
+                            "constraints": constraints,
+                            "time": translate_time / len(translations),
+                            "translation_shape": len(translations),
+                        },
+                    )
+                )
+
+        # Process results
+        midi_file_path = None
+        for id_, src_tokens, hypos, info in sorted(results, key=lambda x: x[0]):
+            if self.src_dict is not None:
+                src_str = self.src_dict.string(src_tokens, args.remove_bpe)
+
+            # Process top prediction
+            for hypo in hypos[:min(len(hypos), args.nbest)]:
+                hypo_tokens, hypo_str, alignment = utils.post_process_prediction(
+                    hypo_tokens=hypo["tokens"].int().cpu(),
+                    src_str=src_str,
+                    alignment=hypo["alignment"],
+                    align_dict=self.align_dict,
+                    tgt_dict=self.tgt_dict,
+                    remove_bpe=args.remove_bpe,
+                    extra_symbols_to_ignore=get_symbols_to_strip_from_output(self.generator),
+                )
+
+                # Save outputs
+                save_id = "continued"
+                os.makedirs(self.save_root + "/0/remi", exist_ok=True)
+                with open(self.save_root + "/0/remi/continued.txt", "w") as f:
+                    f.write(hypo_str)
+
+                # Extract REMI tokens - ensure we have FULL sequence (prefix + continuation)
+                full_tokens = hypo_str.split(" ")
+
+                # Find where <sep> is in the output
+                try:
+                    actual_sep_index = full_tokens.index("<sep>")
+                    generated_tokens = full_tokens[actual_sep_index + 1:]
+                except ValueError:
+                    generated_tokens = full_tokens[sep_pos:] if sep_pos < len(full_tokens) else []
+
+                # Ensure we have the complete sequence (prefix + continuation)
+                # The model might only generate new tokens without repeating the prefix
+                if len(generated_tokens) < len(remi_prefix_tokens):
+                    # Prefix is missing from output - manually add it
+                    remi_token = remi_prefix_tokens + generated_tokens
+                    print(f"[Continuation] Manually added prefix ({len(remi_prefix_tokens)} tokens) "
+                          f"+ generated continuation ({len(generated_tokens)} tokens)")
+                elif len(generated_tokens) < len(remi_prefix_tokens) * 1.5:
+                    # Output seems too short, likely only contains continuation
+                    # Use prefix + generated for safety
+                    remi_token = remi_prefix_tokens + generated_tokens
+                    print(f"[Continuation] Output short - using prefix ({len(remi_prefix_tokens)} tokens) "
+                          f"+ generated ({len(generated_tokens)} tokens)")
+                else:
+                    # Output appears to include prefix + continuation already
+                    remi_token = generated_tokens
+                    print(f"[Continuation] Full sequence from model: {len(generated_tokens)} tokens")
+
+                print(f"[Continuation] Final MIDI will have {len(remi_token)} REMI tokens "
+                      f"(original: {len(remi_prefix_tokens)}, target: ~{len(remi_prefix_tokens) * 2}); "
+                      f"Average translation time: {info['time']} seconds; "
+                      f"Batch size: {args.batch_size}")
+
+                # Decode and save MIDI
+                os.makedirs(self.save_root + "/0/midi", exist_ok=True)
+                midi_obj = self.midi_decoder.decode_from_token_str_list(remi_token)
+                midi_file_path = self.save_root + "/0/midi/continued.mid"
+                midi_obj.dump(midi_file_path)
+
+                break  # Only process first hypothesis
+
+        # Restore original values
+        args.max_len_b = original_max_len
+        self.max_positions = original_max_positions
+        if original_max_target_positions is not None:
+            args.max_target_positions = original_max_target_positions
+
+        return midi_file_path
+
 
 if __name__ == "__main__":
     seed_everything(2024) # 2023

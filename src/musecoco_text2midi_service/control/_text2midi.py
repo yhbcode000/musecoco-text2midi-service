@@ -162,7 +162,113 @@ class Text2Midi:
 
         metadata = {
             "time_generated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "file_path": midi_path
+            "file_path": midi_path,
+            "save_root": unique_save_root
+        }
+
+        if return_midi:
+            with open(midi_path, "rb") as midi_file:
+                midi_data = midi_file.read()
+        else:
+            midi_data = None
+
+        return midi_data, metadata
+
+    def continue_midi_generation(self, original_save_root, return_midi=False):
+        """
+        Continue MIDI generation from a previous job using REMI tokens as prefix.
+
+        Args:
+            original_save_root: Path to the save_root directory of the original generation
+            return_midi: Whether to return MIDI binary data
+
+        Returns:
+            Tuple of (midi_data, metadata) where midi_data is binary if return_midi=True, else None
+        """
+        # Find the REMI token file and infer_command.json from the original generation
+        remi_file_path = None
+        infer_command_path = None
+
+        # Look for files in the save_root directory structure
+        if os.path.isdir(original_save_root):
+            for subdir in os.listdir(original_save_root):
+                subdir_path = os.path.join(original_save_root, subdir)
+                if not os.path.isdir(subdir_path):
+                    continue
+
+                # Check for infer_command.json
+                command_file = os.path.join(subdir_path, "infer_command.json")
+                if os.path.exists(command_file):
+                    infer_command_path = command_file
+
+                # Check for REMI tokens
+                remi_dir = os.path.join(subdir_path, "remi")
+                if os.path.isdir(remi_dir):
+                    for remi_file in os.listdir(remi_dir):
+                        if remi_file.endswith(".txt"):
+                            remi_file_path = os.path.join(remi_dir, remi_file)
+                            break
+
+                if remi_file_path and infer_command_path:
+                    break
+
+        if not remi_file_path:
+            raise FileNotFoundError(f"No REMI token file found in {original_save_root}")
+        if not infer_command_path:
+            raise FileNotFoundError(f"No infer_command.json found in {original_save_root}")
+
+        # Load REMI tokens
+        with open(remi_file_path, "r") as f:
+            remi_str = f.read().strip()
+
+        # Extract just the REMI tokens (after <sep> token)
+        tokens = remi_str.split(" ")
+        try:
+            sep_index = tokens.index("<sep>")
+            remi_tokens = tokens[sep_index + 1:]
+        except ValueError:
+            # If no <sep> found, assume all tokens are REMI tokens
+            remi_tokens = tokens
+
+        # Load attribute dictionary
+        with open(infer_command_path, "r") as f:
+            attribute_dict = json.load(f)
+
+        # Calculate new max_len (2x the original REMI token count)
+        original_token_count = len(remi_tokens)
+        new_max_len = original_token_count * 2
+
+        print(f"Continuing generation from {original_token_count} tokens to {new_max_len} tokens")
+
+        # Generate unique save_root for continuation with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_date = f"{self.base_date}_continued_{timestamp}"
+        unique_save_root = self.paths_config.save_root.format(
+            date=unique_date,
+            model_size=self.model_size,
+            checkpoint_name=self.checkpoint_name,
+            k=self.k,
+            temp=self.temp,
+            ngram=self.ngram
+        )
+
+        # Update predictor's save_root
+        self.attribute2midi_predictor.save_root = unique_save_root
+        os.makedirs(unique_save_root, exist_ok=True)
+
+        # Call the new predict_with_prefix method
+        midi_path = self.attribute2midi_predictor.predict_with_prefix(
+            attribute_dict=attribute_dict,
+            remi_prefix_tokens=remi_tokens,
+            custom_max_len=new_max_len
+        )
+
+        metadata = {
+            "time_generated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "file_path": midi_path,
+            "original_token_count": original_token_count,
+            "new_max_len": new_max_len,
+            "continuation": True
         }
 
         if return_midi:
